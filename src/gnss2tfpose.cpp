@@ -3,6 +3,8 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <tf/transform_datatypes.h>
+#include <tf/transform_broadcaster.h>
+#include <std_msgs/Bool.h>
 
 #include <string>
 #include <numeric>
@@ -17,6 +19,7 @@
 static sensor_msgs::NavSatFix llh;
 static geometry_msgs::PoseWithCovarianceStamped pose_cov;
 static geometry_msgs::PoseStamped pose;
+static geometry_msgs::Quaternion quat;
 static int zone = 0;
 static double utm_x,utm_y;
 static bool northup = true;
@@ -24,6 +27,8 @@ static int mgrs_precision = 9;//9→0.1mm
 static std::string mgrs_code;
 static ros::Publisher pub;
 static ros::Publisher pub_cov;
+static ros::Publisher stat_pub;
+static std_msgs::Bool gnss_stat_msg;
 double alt_above_sea = 0;
 std::string input_msg = "fix";//or nmea
 std::string output_msg = "mgrs";//or plane or UTM
@@ -32,6 +37,7 @@ bool yaw_calc_enable = true;
 
 static geometry_msgs::PoseStamped prev_pose;
 
+const double initial_pose_cov[3] = {10000.0,10000.0,40000.0};
 
 boost::circular_buffer<double> position_buffer_x(buff_epoch);
 boost::circular_buffer<double> position_buffer_y(buff_epoch);
@@ -50,15 +56,19 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
 
     //quality check
     if (msg->status.status < sensor_msgs::NavSatStatus::STATUS_FIX){
+        gnss_stat_msg.data = false;
         return;
+    }else{
+        gnss_stat_msg.data = true;  
     }
-    
+
     try{
         GeographicLib::UTMUPS::Forward(llh.latitude, llh.longitude, zone, northup, utm_x, utm_y);//llh to UTM
         // alt_above_sea = egm2008.ConvertHeight(llh.latitude,llh.longitude,llh.altitude,GeographicLib::Geoid::ELLIPSOIDTOGEOID);//height from geoid
     }
     catch(const GeographicLib::GeographicErr err){
-        ROS_ERROR_STREAM(err.what());
+        ROS_ERROR_STREAM("Failed to convert from LLH to UTM" << err.what());
+        return;
     }
     
 
@@ -115,7 +125,8 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
             try{
                 GeographicLib::MGRS::Forward(zone, northup, median[0], median[1], llh.latitude, mgrs_precision, mgrs_code);
             }catch(const GeographicLib::GeographicErr err){
-                ROS_ERROR_STREAM(err.what());
+                ROS_ERROR_STREAM("Failed to convert from UTM to MGRS" <<err.what());
+                return;
             }
             
             pose.pose.position.x = std::stod(mgrs_code.substr(GZD_ID_size,mgrs_precision)) / 10000.0 ;//set unit as [m]
@@ -129,12 +140,18 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
             pose.pose.position.y = median[1];
             pose.pose.position.z = median[2];
         }
-
+         
+        double position_diff[2] = {pose.pose.position.y - prev_pose.pose.position.y,pose.pose.position.x - prev_pose.pose.position.x};
+        //for fix2tfpose/nmea2tfpose compatibility
+        // if(sqrt(position_diff[0] * position_diff[0] + position_diff[1] * position_diff[1]) >0.2 ){
+        //     yaw_calc_enable = true;
+        // }
+        double yaw;
         if(yaw_calc_enable){
             //something bugged for direction
-            double yaw = atan2(pose.pose.position.y - prev_pose.pose.position.y , pose.pose.position.x - prev_pose.pose.position.x );
+            double yaw = atan2(position_diff[0] , position_diff[1]);
             std::cout << "yaw:" << yaw << std::endl;
-            geometry_msgs::Quaternion quat = tf::createQuaternionMsgFromYaw(yaw);// yaw->quat is OK
+            quat = tf::createQuaternionMsgFromYaw(yaw);
             pose.pose.orientation = quat;
         }else{
             pose.pose.orientation.w = 1.0;
@@ -142,22 +159,41 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
         
 
 
-        // rotation from 2point  ( use **RMC/VTG if can) 
+        // rotation from 2point  ( use **RMC/VTG if available) 
         pub.publish(pose);
         prev_pose = pose;
-        
+        stat_pub.publish(gnss_stat_msg);
+
         //add tf for keeping compatibility fix2tfpose/nmea2tfpose
+        static tf::TransformBroadcaster tf_br;
+        tf::Transform transform;
+        tf::Quaternion tf_quat;
+        transform.setOrigin(tf::Vector3(pose.pose.position.x, pose.pose.position.y, pose.pose.position.z));
+        tf_quat.setRPY(0.0, 0.0, yaw);
+        transform.setRotation(tf_quat);
+        tf_br.sendTransform(tf::StampedTransform(transform, msg->header.stamp, "map","gps"));
 
-        //add covariance(temporary)
         pose_cov.header = pose.header;
-        pose_cov.pose.pose = pose.pose;
-        //just copy&paste
-        pose_cov.pose.covariance[6*0 + 0] = 1;
-        pose_cov.pose.covariance[6*1 + 1] = 1;
-        pose_cov.pose.covariance[6*2 + 2] = 1;
-
-
+        pose_cov.pose.pose = pose.pose;        
+        //covariance from navsatfix for temporary(this use HDOP but bad HDOP don't always means bad accuracy)
+        // need to read other message for more precision
+        double msg_pose_cov[3];
+        if(msg->position_covariance_type > sensor_msgs::NavSatFix::COVARIANCE_TYPE_UNKNOWN){
+            msg_pose_cov[0] = msg->position_covariance[0]; //East
+            msg_pose_cov[1] = msg->position_covariance[4]; //North
+            msg_pose_cov[2] = msg->position_covariance[8];//Up
+        }else{
+            msg_pose_cov[0] = initial_pose_cov[0];//worst vaule
+            msg_pose_cov[1] = initial_pose_cov[1];
+            msg_pose_cov[2] = initial_pose_cov[2];
+        }
+        pose_cov.pose.covariance[6*0 + 0] = msg_pose_cov[0];
+        pose_cov.pose.covariance[6*1 + 1] = msg_pose_cov[1];
+        pose_cov.pose.covariance[6*2 + 2] = msg_pose_cov[2];
+        
+        pub_cov.publish(pose_cov);
     }    
+
 }
 
 
@@ -179,6 +215,7 @@ int main(int argc, char** argv){
 
     pub = n.advertise<geometry_msgs::PoseStamped>("/gnss_pose",1000);
     pub_cov = n.advertise<geometry_msgs::PoseWithCovarianceStamped>("/gnss_pose_cov",1000);
+    stat_pub = n.advertise<std_msgs::Bool>("/fix",1000);
 
 
     ros::spin();
