@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <launch>
-
+  <arg name="msg_name" default="/ublox" />
   <node pkg="gnss_poser" name="gnss2tfpose" type="gnss2tfpose" output="screen" >
     <param name="input_msg" type="str" value="fix" />
     <param name="output_msg" type="str" value="utm" />
     <param name="buff_epoch" type="int" value="1" />
+    <param name="use_ublox_gps" type="bool" value="true" />
+    <param name="ubx_msg_name" type="str" value="$(arg msg_name)" />
     <remap from="/gnss_pose" to="fix2mgrs/gnss_pose" />
   </node>
 

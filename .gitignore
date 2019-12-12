@@ -49,3 +49,6 @@ qtcreator-*
 
 # Catkin custom files
 CATKIN_IGNORE
+.vscode/c_cpp_properties.json
+.vscode/settings.json
+gnss_poser.code-workspace

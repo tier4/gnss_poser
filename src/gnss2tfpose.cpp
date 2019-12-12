@@ -9,6 +9,7 @@
 #include <string>
 #include <numeric>
 
+#include <ublox_msgs/NavPVT.h>
 
 #include <GeographicLib/MGRS.hpp>
 #include <GeographicLib/UTMUPS.hpp>
@@ -32,8 +33,12 @@ static std_msgs::Bool gnss_stat_msg;
 double alt_above_sea = 0;
 std::string input_msg = "fix";//or nmea
 std::string output_msg = "mgrs";//or plane or UTM
+std::string ubx_msg_name = "ublox";
+static bool use_ublox_gps = false;
 int buff_epoch = 1;
 bool yaw_calc_enable = true;
+
+int heading =0;
 
 static geometry_msgs::PoseStamped prev_pose;
 
@@ -150,13 +155,28 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
         if(yaw_calc_enable){
             //something bugged for direction
             double yaw = atan2(position_diff[0] , position_diff[1]);
-            std::cout << "yaw:" << yaw << std::endl;
+            int heading_conv;
+            if(use_ublox_gps){
+                //convert heading[0(North)~360] to yaw[-M_PI(West)~M_PI]
+                if(heading >= 0 && heading <= 27000000){
+                    heading_conv = 9000000 - heading;
+                }else{
+                    heading_conv = 45000000 - heading;
+                }
+                yaw = (heading_conv * 1e-5) * M_PI / 180.0;
+            }
+            // std::cout << "heading:" << heading << " heading_conv:" << heading_conv * 1e-5 << std::endl;
             quat = tf::createQuaternionMsgFromYaw(yaw);
+            // double yaw_ubx = tf::getYaw(quat);
+            // std::cout << "covert yaw:" << yaw_ubx << std::endl;
+
             pose.pose.orientation = quat;
         }else{
             pose.pose.orientation.w = 1.0;
         }
         
+
+
 
 
         // rotation from 2point  ( use **RMC/VTG if available) 
@@ -193,7 +213,14 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
         
         pub_cov.publish(pose_cov);
     }    
+    // ROS_INFO("sub %d",heading);
 
+}
+
+void heading_callback(const ublox_msgs::NavPVT::ConstPtr& msg){
+    heading = msg->heading;
+
+    // ROS_INFO("subc %f",heading);
 }
 
 
@@ -206,12 +233,23 @@ int main(int argc, char** argv){
     n_private.getParam("/gnss2tfpose/input_msg",input_msg);
     n_private.getParam("/gnss2tfpose/output_msg",output_msg);  
     n_private.getParam("/gnss2tfpose/buff_epoch",buff_epoch);
+    n_private.getParam("/gnss2tfpose/use_ublox_gps",use_ublox_gps);
+    n_private.getParam("/gnss2tfpose/ubx_msg_name",ubx_msg_name);
 
     position_buffer_x.set_capacity(buff_epoch);
     position_buffer_y.set_capacity(buff_epoch);
     position_buffer_z.set_capacity(buff_epoch);
 
     ros::Subscriber llh = n.subscribe("/fix", 1000, llh_callback);
+    ros::Subscriber heading_sub;
+    if(use_ublox_gps){
+        //subscribe ublox_msgs
+        std::string ubx_msg_fix = ubx_msg_name +  "/fix";
+        std::string ubx_msg_heading = ubx_msg_name + "/navpvt";
+        ROS_INFO("sub %s",ubx_msg_name.c_str());
+        llh = n.subscribe(ubx_msg_fix, 1000, llh_callback);
+        heading_sub = n.subscribe(ubx_msg_heading, 1000, heading_callback);
+    }
 
     pub = n.advertise<geometry_msgs::PoseStamped>("/gnss_pose",1000);
     pub_cov = n.advertise<geometry_msgs::PoseWithCovarianceStamped>("/gnss_pose_cov",1000);
