@@ -10,6 +10,7 @@
 #include <numeric>
 
 #include <ublox_msgs/NavPVT.h>
+#include <gnss/geo_pos_conv.hpp>
 
 #include <GeographicLib/MGRS.hpp>
 #include <GeographicLib/UTMUPS.hpp>
@@ -23,6 +24,7 @@ static geometry_msgs::PoseStamped pose;
 static geometry_msgs::Quaternion quat;
 static int zone = 0;
 static double utm_x,utm_y;
+static int plane;
 static bool northup = true;
 static int mgrs_precision = 9;//9→0.1mm 
 static std::string mgrs_code;
@@ -55,6 +57,7 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
     llh.latitude = msg->latitude;
     llh.longitude = msg->longitude;
     llh.altitude = msg->altitude;//height from ellipsoid
+    geo_pos_conv geo;
     
     // Experimental:for height conversion
     // GeographicLib::Geoid egm2008("egm2008-1");//change model if necessary
@@ -75,17 +78,6 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
         ROS_ERROR_STREAM("Failed to convert from LLH to UTM" << err.what());
         return;
     }
-    
-
-    //for test 
-    // std::cout << std::setprecision(12) << "llh.lat " << llh.latitude << " llh.lon " << llh.longitude <<"\n";
-    // std::cout << std::setprecision(12) << "utm_x " << utm_x << " utm_y " << utm_y <<"\n";
-    // std::cout << "mgrs_code " << mgrs_code << "\n";
-    // std::cout  << "mgrs zone:" << mgrs_code.substr(0,GZD_ID_size) << " mgrs_north:" << mgrs_code.substr(GZD_ID_size,mgrs_precision) << " mgrs_east:" << mgrs_code.substr(GZD_ID_size + mgrs_precision,mgrs_precision) <<"\n";
-    // std::cout  <<  std::setprecision(mgrs_precision)  << " mgrs_north_double:" << std::stod(mgrs_code.substr(GZD_ID_size,mgrs_precision)) << " mgrs_east_double:" << std::stod(mgrs_code.substr(GZD_ID_size + mgrs_precision,mgrs_precision)) <<"\n";    
-    // std::cout << "height above sea level " << alt_above_sea << "\n";
-    // std::cout << "buff_epoch:" << buff_epoch <<  std::endl;
-    // std::cout << std::setprecision(12) << "utm_x:" << utm_x << " utm_y:" << utm_y << std::endl;
 
     position_buffer_x.push_front(utm_x);
     position_buffer_y.push_front(utm_y);
@@ -96,10 +88,6 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
         pose.header.frame_id = "map";   
         
         //change to median
-        // double mean_x = std::accumulate(position_buffer_x.begin(),position_buffer_x.end(),0.0) / buff_epoch;
-        // double mean_y = std::accumulate(position_buffer_y.begin(),position_buffer_y.end(),0.0) / buff_epoch;    
-        // double mean_z = std::accumulate(position_buffer_z.begin(),position_buffer_z.end(),0.0) / buff_epoch;
-
         boost::circular_buffer<double> sort_buffer_x(buff_epoch);
         boost::circular_buffer<double> sort_buffer_y(buff_epoch);
         boost::circular_buffer<double> sort_buffer_z(buff_epoch);
@@ -112,9 +100,6 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
         std::sort(sort_buffer_z.begin(),sort_buffer_z.end());
         double median[3];//x,y,z
         size_t median_index = sort_buffer_x.size() / 2; 
-
-        // std::cout << "median_index:" << median_index <<  std::endl;
-        // std::cout << "sort_buffer_x.size:" << sort_buffer_x.size() <<  std::endl;
 
         if(sort_buffer_x.size() % 2){
             median[0] = sort_buffer_x.at(median_index);
@@ -138,7 +123,18 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
             pose.pose.position.y = std::stod(mgrs_code.substr(GZD_ID_size + mgrs_precision,mgrs_precision)) / 10000.0 ;//set unit as [m]
             pose.pose.position.z = median[2]; 
         }else if(output_msg == "plane"){
-            //later
+            double median_latlon[2]= {0.0};
+            try{
+                GeographicLib::UTMUPS::Reverse(zone,northup,median[0],median[1],median_latlon[0],median_latlon[1]);//UTM to llh
+            }catch(const GeographicLib::GeographicErr err){
+                ROS_ERROR_STREAM("Failed to convert from UTM to MGRS" <<err.what());
+                return;
+            }
+            geo.set_plane(plane);
+            geo.llh_to_xyz(median_latlon[0],median_latlon[1],median[2]);
+            pose.pose.position.x = geo.y();//replace XY to adapt coordinates
+            pose.pose.position.y = geo.x();
+            pose.pose.position.z = geo.z();
 
         }else{//utm
             pose.pose.position.x = median[0];
@@ -153,7 +149,6 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
         // }
         double yaw;
         if(yaw_calc_enable){
-            //something bugged for direction
             double yaw = atan2(position_diff[0] , position_diff[1]);
             int heading_conv;
             if(use_ublox_gps){
@@ -163,13 +158,10 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
                 }else{
                     heading_conv = 45000000 - heading;
                 }
-                yaw = (heading_conv * 1e-5) * M_PI / 180.0;
+                yaw = (heading_conv * 1e-5) * M_PI / 180.0;//scaling[1e-5] and convert[deg] to rad
             }
             // std::cout << "heading:" << heading << " heading_conv:" << heading_conv * 1e-5 << std::endl;
             quat = tf::createQuaternionMsgFromYaw(yaw);
-            // double yaw_ubx = tf::getYaw(quat);
-            // std::cout << "covert yaw:" << yaw_ubx << std::endl;
-
             pose.pose.orientation = quat;
         }else{
             pose.pose.orientation.w = 1.0;
@@ -218,6 +210,7 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
 }
 
 void heading_callback(const ublox_msgs::NavPVT::ConstPtr& msg){
+    //no scaling conversion
     heading = msg->heading;
 
     // ROS_INFO("subc %f",heading);
@@ -230,11 +223,12 @@ int main(int argc, char** argv){
 
     ros::NodeHandle n;
     ros::NodeHandle n_private("~");
-    n_private.getParam("/gnss2tfpose/input_msg",input_msg);
-    n_private.getParam("/gnss2tfpose/output_msg",output_msg);  
-    n_private.getParam("/gnss2tfpose/buff_epoch",buff_epoch);
-    n_private.getParam("/gnss2tfpose/use_ublox_gps",use_ublox_gps);
-    n_private.getParam("/gnss2tfpose/ubx_msg_name",ubx_msg_name);
+    n_private.getParam("input_msg",input_msg);
+    n_private.getParam("output_msg",output_msg);  
+    n_private.getParam("buff_epoch",buff_epoch);
+    n_private.getParam("use_ublox_gps",use_ublox_gps);
+    n_private.getParam("ubx_msg_name",ubx_msg_name);
+    n_private.getParam("plane",plane);
 
     position_buffer_x.set_capacity(buff_epoch);
     position_buffer_y.set_capacity(buff_epoch);
@@ -253,7 +247,7 @@ int main(int argc, char** argv){
 
     pub = n.advertise<geometry_msgs::PoseStamped>("/gnss_pose",1000);
     pub_cov = n.advertise<geometry_msgs::PoseWithCovarianceStamped>("/gnss_pose_cov",1000);
-    stat_pub = n.advertise<std_msgs::Bool>("/fix",1000);
+    stat_pub = n.advertise<std_msgs::Bool>("/gnss_stat",1000);
 
 
     ros::spin();
