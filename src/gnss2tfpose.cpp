@@ -59,8 +59,8 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
     llh.altitude = msg->altitude;//height from ellipsoid
     geo_pos_conv geo;
     
-    // Experimental:for height conversion
-    // GeographicLib::Geoid egm2008("egm2008-1");//change model if necessary
+    // convert height from ellipsoid to MSL
+    GeographicLib::Geoid egm2008("egm2008-1");//change model if necessary
 
     //quality check
     if (msg->status.status < sensor_msgs::NavSatStatus::STATUS_FIX){
@@ -72,7 +72,8 @@ void llh_callback(const sensor_msgs::NavSatFix::ConstPtr& msg){
 
     try{
         GeographicLib::UTMUPS::Forward(llh.latitude, llh.longitude, zone, northup, utm_x, utm_y);//llh to UTM
-        // alt_above_sea = egm2008.ConvertHeight(llh.latitude,llh.longitude,llh.altitude,GeographicLib::Geoid::ELLIPSOIDTOGEOID);//height from geoid
+        alt_above_sea = egm2008.ConvertHeight(llh.latitude,llh.longitude,llh.altitude,GeographicLib::Geoid::ELLIPSOIDTOGEOID);
+        llh.altitude = alt_above_sea;
     }
     catch(const GeographicLib::GeographicErr err){
         ROS_ERROR_STREAM("Failed to convert from LLH to UTM" << err.what());
