@@ -135,6 +135,9 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${GeographicLib_INCLUDE_DIRS}
 )
+link_directories(
+  /usr/local/lib
+)
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
@@ -165,7 +168,7 @@ add_dependencies(gnss_poser ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTE
 ## Specify libraries to link a library or executable target against
  target_link_libraries(gnss_poser
    ${catkin_LIBRARIES}
-   ${GeographicLib_LIBRARIES}
+   Geographic 
  )
 
 #############
