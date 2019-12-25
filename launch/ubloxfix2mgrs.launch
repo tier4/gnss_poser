@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<launch>
+  <include file="$(find gnss_poser)/launch/gnss_poser.launch" >
+    <arg name="input_topic_fix" default="/ublox/fix" />
+    <arg name="input_topic_navpvt" default="/ublox/navpvt" />
+    <arg name="coordinate_system" value="1" doc="0:UTM, 1:MGRS, 2:PLANE" />
+    <arg name="use_ublox_receiver" default="true" />
+  </include>
+</launch>
