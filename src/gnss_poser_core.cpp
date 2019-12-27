@@ -31,6 +31,7 @@ GNSSPoser::GNSSPoser(ros::NodeHandle nh, ros::NodeHandle private_nh)
   , gnss_base_frame_("gnss_base_link")
   , map_frame_("map")
   , use_ublox_receiver_(false)
+  , plane_zone_(9)
 {
   int coordinate_system = static_cast<int>(coordinate_system_);
   private_nh_.getParam("coordinate_system", coordinate_system);
@@ -41,6 +42,7 @@ GNSSPoser::GNSSPoser(ros::NodeHandle nh, ros::NodeHandle private_nh)
   private_nh_.getParam("gnss_base_frame", gnss_base_frame_);
   private_nh_.getParam("map_frame", map_frame_);
   private_nh_.getParam("use_ublox_receiver", use_ublox_receiver_);
+  private_nh_.getParam("plane_zone",plane_zone_);
 
   int buff_epoch = 1;
   private_nh_.getParam("buff_epoch",buff_epoch);
@@ -148,7 +150,7 @@ GNSSStat GNSSPoser::convert(const sensor_msgs::NavSatFix& nav_sat_fix_msg, Coord
     gnss_stat = NavSatFix2MGRS(nav_sat_fix_msg, MGRSPrecision::_100MICRO_METER);
   }
   else if (coordinate_system == CoordinateSystem::PLANE) {
-    // TODO later
+    gnss_stat = NavSatFix2PLANE(nav_sat_fix_msg,plane_zone_);
   }
   else {
     ROS_ERROR_STREAM_THROTTLE(1, "Unknown Coordinate System");

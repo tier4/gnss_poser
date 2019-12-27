@@ -6,6 +6,8 @@
 
 #include "gnss_poser/gnss_stat.h"
 
+#include <gnss/geo_pos_conv.hpp>
+
 namespace GNSSPoser {
 
 enum class MGRSPrecision { 
@@ -19,6 +21,20 @@ enum class MGRSPrecision {
   _1_MIllI_METER = 8,
   _100MICRO_METER = 9,
 };
+//EllipsoidHeight:height above ellipsoid
+// OrthometricHeight:height above geoid
+double EllipsoidHeight2OrthometricHeight(const sensor_msgs::NavSatFix &nav_sat_fix_msg)
+{
+  double OrthometricHeight;
+  try{
+    GeographicLib::Geoid egm2008("egm2008-1");
+    OrthometricHeight = egm2008.ConvertHeight(nav_sat_fix_msg.latitude, nav_sat_fix_msg.longitude, nav_sat_fix_msg.altitude, GeographicLib::Geoid::ELLIPSOIDTOGEOID);
+  }
+  catch(const GeographicLib::GeographicErr err){
+    ROS_ERROR_STREAM("Failed to convert Height from Ellipsoid to Orthometric" << err.what());
+  }
+  return OrthometricHeight;
+}
 
 GNSSStat NavSatFix2UTM(const sensor_msgs::NavSatFix &nav_sat_fix_msg)
 {
@@ -28,9 +44,7 @@ GNSSStat NavSatFix2UTM(const sensor_msgs::NavSatFix &nav_sat_fix_msg)
   try{
     GeographicLib::UTMUPS::Forward(nav_sat_fix_msg.latitude, nav_sat_fix_msg.longitude, utm.zone, utm.northup, utm.x, utm.y);
 
-    GeographicLib::Geoid egm2008("egm2008-1");
-    utm.z = egm2008.ConvertHeight(nav_sat_fix_msg.latitude, nav_sat_fix_msg.longitude, nav_sat_fix_msg.altitude, GeographicLib::Geoid::ELLIPSOIDTOGEOID);
-    // utm.z = nav_sat_fix_msg.altitude;
+    utm.z = EllipsoidHeight2OrthometricHeight(nav_sat_fix_msg);
 
     utm.latitude = nav_sat_fix_msg.latitude;
     utm.longitude = nav_sat_fix_msg.longitude;
@@ -67,6 +81,19 @@ GNSSStat NavSatFix2MGRS(const sensor_msgs::NavSatFix &nav_sat_fix_msg, const MGR
   const auto utm = NavSatFix2UTM(nav_sat_fix_msg);
   const auto mgrs = UTM2MGRS(utm, precision);
   return mgrs;
+}
+
+GNSSStat NavSatFix2PLANE(const sensor_msgs::NavSatFix &nav_sat_fix_msg, const int &plane_zone)
+{
+  GNSSStat plane;
+  plane.coordinate_system = CoordinateSystem::PLANE;
+  geo_pos_conv geo;
+  geo.set_plane(plane_zone);
+  geo.llh_to_xyz(nav_sat_fix_msg.latitude,nav_sat_fix_msg.longitude,nav_sat_fix_msg.altitude);
+  plane.x = geo.y();
+  plane.y = geo.x();
+  plane.z = EllipsoidHeight2OrthometricHeight(nav_sat_fix_msg);
+  return plane;
 }
 
 }

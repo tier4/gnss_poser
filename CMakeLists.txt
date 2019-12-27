@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   geometry_msgs
   ublox_msgs
+  gnss
 )
 
 # find_package (GeographicLib REQUIRED)

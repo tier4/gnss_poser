@@ -63,6 +63,8 @@ class GNSSPoser
 
     bool use_ublox_receiver_;
 
+    int plane_zone_;
+
     boost::circular_buffer<geometry_msgs::Point> position_buffer_;
     ublox_msgs::NavPVT::ConstPtr nav_pvt_msg_ptr_;
 };
