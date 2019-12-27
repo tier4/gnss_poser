@@ -2,22 +2,31 @@ cmake_minimum_required(VERSION 2.8.3)
 project(gnss_poser)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
- add_compile_options(-std=c++11)
+add_compile_options(-std=c++11)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   roscpp
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
   std_msgs
   sensor_msgs
   geometry_msgs
-  tf
   ublox_msgs
-  gnss
 )
 
-#find_package (GeographicLib REQUIRED)
+# find_package (GeographicLib REQUIRED)
+find_package(PkgConfig)
+find_path(GeographicLib_INCLUDE_DIR GeographicLib/Config.h
+  PATH_SUFFIXES GeographicLib
+  )
+set(GeographicLib_INCLUDE_DIRS ${GeographicLib_INCLUDE_DIR})
+find_library(GeographicLib_LIBRARIES
+  NAMES Geographic
+)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -109,7 +118,7 @@ find_package(catkin REQUIRED COMPONENTS
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
+   INCLUDE_DIRS include
 #  LIBRARIES nmea2mgrs
 #  CATKIN_DEPENDS roscpp std_msgs
 #  DEPENDS system_lib
@@ -122,8 +131,9 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
-# include
+  include
   ${catkin_INCLUDE_DIRS}
+  ${GeographicLib_INCLUDE_DIRS}
 )
 link_directories(
   /usr/local/lib
@@ -142,7 +152,8 @@ link_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-add_executable(gnss2tfpose src/gnss2tfpose.cpp)
+add_executable(gnss_poser src/gnss_poser_node.cpp
+                          src/gnss_poser_core.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -152,10 +163,10 @@ add_executable(gnss2tfpose src/gnss2tfpose.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-add_dependencies(gnss2tfpose ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(gnss_poser ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
- target_link_libraries(gnss2tfpose
+ target_link_libraries(gnss_poser
    ${catkin_LIBRARIES}
    Geographic 
  )
@@ -176,7 +187,7 @@ add_dependencies(gnss2tfpose ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORT
 
 ## Mark executables for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_executables.html
-install(TARGETS gnss2tfpose
+install(TARGETS gnss_poser
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
