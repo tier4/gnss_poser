@@ -28,9 +28,9 @@ GNSSStat NavSatFix2UTM(const sensor_msgs::NavSatFix &nav_sat_fix_msg)
   try{
     GeographicLib::UTMUPS::Forward(nav_sat_fix_msg.latitude, nav_sat_fix_msg.longitude, utm.zone, utm.northup, utm.x, utm.y);
 
-    // GeographicLib::Geoid egm2008("egm2008-1");
-    // utm.z = egm2008.ConvertHeight(nav_sat_fix_msg.latitude, nav_sat_fix_msg.longitude, nav_sat_fix_msg.altitude, GeographicLib::Geoid::ELLIPSOIDTOGEOID);
-    utm.z = nav_sat_fix_msg.altitude;
+    GeographicLib::Geoid egm2008("egm2008-1");
+    utm.z = egm2008.ConvertHeight(nav_sat_fix_msg.latitude, nav_sat_fix_msg.longitude, nav_sat_fix_msg.altitude, GeographicLib::Geoid::ELLIPSOIDTOGEOID);
+    // utm.z = nav_sat_fix_msg.altitude;
 
     utm.latitude = nav_sat_fix_msg.latitude;
     utm.longitude = nav_sat_fix_msg.longitude;

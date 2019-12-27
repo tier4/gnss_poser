@@ -56,7 +56,7 @@ GNSSPoser::GNSSPoser(ros::NodeHandle nh, ros::NodeHandle private_nh)
 
 void GNSSPoser::callbackNavSatFix(const sensor_msgs::NavSatFix::ConstPtr& nav_sat_fix_msg_ptr){
 
-  // check fiexed topic
+  // check fixed topic
   const bool is_fixed = isFixed(nav_sat_fix_msg_ptr->status);
 
   // publish is_fixed topic
@@ -75,6 +75,10 @@ void GNSSPoser::callbackNavSatFix(const sensor_msgs::NavSatFix::ConstPtr& nav_sa
 
   // calc median position
   position_buffer_.push_front(position);
+  if(!position_buffer_.full()){
+    ROS_WARN_STREAM_THROTTLE(1,"Buffering Position. Output Skipped.");
+    return;
+  }
   const auto median_position = getMedianPosition(position_buffer_);
 
   // calc gnss antenna orientation
@@ -167,7 +171,7 @@ geometry_msgs::Point GNSSPoser::getMedianPosition(const boost::circular_buffer<g
     const size_t median_index = array.size() / 2;
     double median = (array.size()%2)
                  ? (array.at(median_index))
-                 : (array.at(median_index) + array.at(median_index-1) / 2);
+                 : ((array.at(median_index) + array.at(median_index-1)) / 2);
     return median;
   };
 
