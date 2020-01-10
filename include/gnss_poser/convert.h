@@ -31,7 +31,9 @@ double EllipsoidHeight2OrthometricHeight(const sensor_msgs::NavSatFix &nav_sat_f
     OrthometricHeight = egm2008.ConvertHeight(nav_sat_fix_msg.latitude, nav_sat_fix_msg.longitude, nav_sat_fix_msg.altitude, GeographicLib::Geoid::ELLIPSOIDTOGEOID);
   }
   catch(const GeographicLib::GeographicErr err){
-    ROS_ERROR_STREAM("Failed to convert Height from Ellipsoid to Orthometric" << err.what());
+    ROS_ERROR_STREAM("Failed to convert Height from Ellipsoid to Orthometric. " << err.what());
+    OrthometricHeight = nav_sat_fix_msg.altitude;
+
   }
   return OrthometricHeight;
 }

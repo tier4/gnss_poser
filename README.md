@@ -25,6 +25,9 @@ This package use GeographicLib to calculate coordinates.
 
         geographiclib-get-geoids best
 
+    or install manually.
+    <https://geographiclib.sourceforge.io/html/geoid.html>
+
 ### Ublox
 
 If you use ublox GNSS receriver, install below package.
@@ -35,20 +38,29 @@ This allow to obtain heading while vehicle is stopping.
 
 ### gnss_poser package
 
-This package use gnss package in autoware.
+This package use gnss package in Autoware to convert UTM to Japan Plane Rectangular Coordinate Systems.
 
 1. download and build Autoware
 2. download and build this package
 
 ## Usage
 
-    roslaunch gnss_poser gnss_poser.launch
-For ublox GNSS receriver
+1. Publish NavSatFix message.
 
-    roslaunch gnss_poser ubloxfix2mgrs.launch
+    If you use u-blox GNSS receiver, launch below.
+
+        roslaunch ublox_gps ublox_device.launch node_name:=ublox param_file_name:=c94_f9p_rover
+
+2. launch gnss_poser
+
+        roslaunch gnss_poser gnss_poser.launch
+
+    For ublox GNSS receriver, use below launch file.
+
+        roslaunch gnss_poser ubloxfix2mgrs.launch
 
 ## Configuration
 
 This package use egm2008-1 for geoid datasets.
 
-Parameters can be set in Launch file.
+Parameters can be set in launch file.
