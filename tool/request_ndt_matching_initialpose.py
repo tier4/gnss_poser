@@ -1,26 +1,19 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-from argparse import ArgumentParser
-
 import rospy
 from lidar_localizer.srv import Initialpose
 from geometry_msgs.msg import PoseWithCovarianceStamped
 
 
 if __name__ == '__main__':
-    parser = ArgumentParser()
-    parser.add_argument('-T', '--topic', type=str, default='/gnss_pose_cov', help='topic')
-    parser.add_argument('-S', '--service', type=str, default='ndt_matching_initialpose', help='service')
-    args = parser.parse_args()
-
     rospy.init_node('gnss_poser_request_ndt_matching_initialpose', anonymous=True)
 
-    gnss_pose = rospy.wait_for_message(args.topic, PoseWithCovarianceStamped)
+    gnss_pose = rospy.wait_for_message('/gnss_pose_cov', PoseWithCovarianceStamped)
 
-    rospy.wait_for_service(args.service)
+    rospy.wait_for_service('ndt_matching_initialpose')
     try:
-        client = rospy.ServiceProxy(args.service, Initialpose)
+        client = rospy.ServiceProxy('ndt_matching_initialpose', Initialpose)
         req = Initialpose()
         req.pose = gnss_pose
         res = client(req.pose)
